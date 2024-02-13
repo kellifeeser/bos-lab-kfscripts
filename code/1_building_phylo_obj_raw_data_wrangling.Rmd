@@ -86,7 +86,7 @@ library("biomformat"); packageVersion("biomformat") #‘1.28.0’
 
 You might find these from EDGE, these are OTU tables (with taxonomy embedded, atypical for most OTU tables)
 
-```{r}
+```{r, error=FALSE}
 #head('../raw_data/ForCally_Feb2024/allReads.genus.biom')
 
 infile <- '../raw_data/ForCally_Feb2024/allReads.genus.biom'
