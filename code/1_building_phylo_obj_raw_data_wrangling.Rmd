@@ -1,0 +1,299 @@
+---
+title: "**Step 1: Building a phyloseq object**"
+subtitle: "Wrangling raw data files, beginning phyloseq, pre-processing and cleaning of 16S / ITS OTU tables"
+author: "Kelli Feeser"
+date: '2024-02-13'
+output:
+  bookdown::html_document2:
+    code_folding: show
+    df_print: paged
+    css: test.css
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    fig.caption: yes
+    keep_md: yes
+  html_notebook:
+    code_folding: hide
+    css: test.css
+    df_print: paged
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+    toc_depth: 3
+  html_document: 
+    code_folding: hide
+    css: test.css
+    df_print: paged
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+    toc_depth: 3
+editor_options:
+  chunk_output_type: inline
+---
+
+# Installing and loading packages
+
+\
+Install and load `RDPutils`, `phyloseq`, `rBIOM`... I've found other packages helpful too so I am including them.
+
+```{r install packages, eval=FALSE, include=T}
+
+library("devtools"); packageVersion("devtools") #‘2.4.5’
+devtools::install_github("jfq3/RDPutils", dependencies = TRUE)
+
+
+install.packages("rbiom")
+
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("biomformat")
+```
+
+```{r load packages, eval=T, include=T,results='hide'}
+
+library("ggplot2"); packageVersion("ggplot2") #‘3.4.2’
+library("vegan"); packageVersion("vegan") # ‘2.5.7’
+library("phyloseq"); packageVersion("phyloseq") #‘1.32.0’
+library("RDPutils"); packageVersion("RDPutils") #‘1.4.1’
+# library("huxtable"); packageVersion("huxtable") #‘5.5.2’
+library("scales"); packageVersion("scales") #‘1.2.1’
+library("swatches"); packageVersion("swatches") #‘0.5.0’
+library("ggsci"); packageVersion("ggsci") #‘3.0.0’
+library("ggpubr"); packageVersion("ggpubr") #‘0.6.0’
+library("viridis"); packageVersion("viridis") #‘0.6.3’
+library("RColorBrewer"); packageVersion("RColorBrewer") #‘1.1.3’
+library("cowplot"); packageVersion("cowplot") #‘1.1.1’
+library("rbiom"); packageVersion("rbiom") #‘1.0.3’
+library("biomformat"); packageVersion("biomformat") #‘1.28.0’
+
+```
+
+\
+
+------------------------------------------------------------------------
+
+\
+
+# Types of input files
+
+\
+
+## BIOM files
+\
+
+You might find these from EDGE, these are OTU tables (with taxonomy embedded, atypical for most OTU tables)
+
+```{r}
+#head('../raw_data/ForCally_Feb2024/allReads.genus.biom')
+
+infile <- '../raw_data/ForCally_Feb2024/allReads.genus.biom'
+biom   <-  read.biom(infile)
+# you might notice an error here about the phylogeny not being included, that's fine
+```
+
+\
+
+Use `info(biom)` for information about your file
+
+-   `info(biom)$'creation-date'`
+
+    -   `r biom$info$'creation-date'`\
+
+-   `info(biom)$'generated-by'`
+
+    -   
+
+        ```         
+        <string> Package and revision that built the table
+        ```
+
+    -   `r biom$info$'generated-by'`
+
+    -   Good news! The Version 2 `biom` format is based on [**HDF5**](http://www.hdfgroup.org/) to provide the overall structure for the format. HDF5 is a widely supported binary format with native parsers available within many programming languages. (this is easier than the Version 1 `biom` format is based on [**JSON**](http://www.json.org/) to provide the overall structure for the format.)\
+        \
+
+-   `info(biom)$nnz`
+
+    -   
+
+        ```         
+        <int> The number of non-zero elements in the table
+        ```
+
+    -   `r biom$info$nnz`  \
+\
+
+
+-   `info(biom)$shape`
+
+    -   
+
+        ```         
+        <list of ints>, the number of rows (OTUs) and number of columns in data
+        ```
+
+    -   `r biom$info$shape[1]` (\# of OTUs)
+
+    -   `r biom$info$shape[2]` (\# of columns / samples)
+
+    -   column names: `r biom$counts$dimnames[[2]]`
+
+\
+
+-   `info(biom)$type`
+
+    -   `<string> Table type (a controlled vocabulary)`
+
+    -   `r biom$info$type`
+
+### Best way to read-on BIOM file
+
+Your `biom` file is constructed with these sample names:
+
+-   `r sample.names(biom)`
+
+The OTU IDs are 'taxa.names':
+
+-   e.g., `r taxa.names(biom) %>% head()`
+
+The taxonomic string associated with each OTU looks like this:
+
+-   `r biom$taxonomy[1,]`
+
+
+The easiest way to read-in `biom` files for later analysis in `phyloseq`:
+```
+infile <- '../raw_data/ForCally_Feb2024/allReads.genus.biom'
+genus_biom <- biomformat::biom(biomformat::read_hdf5_biom(infile))
+genus_biom
+```
+
+```{r, include=FALSE}
+infile <- '../raw_data/ForCally_Feb2024/allReads.genus.biom'
+
+genus_biom <- biomformat::biom(biomformat::read_hdf5_biom(infile))
+```
+
+\
+
+### Getting OTU table from BIOM file
+
+Convert to dataframe containing OTU table:  
+```
+OTU_table_as.df <- data.frame(as(biom_data(genus_biom), "matrix"))
+head(OTU_table_as.df)
+```
+
+```{r matrix-coercion, echo=FALSE}
+OTU_table_as.df <- data.frame(as(biom_data(genus_biom), "matrix"))
+
+# add the row names (OTU IDs) as the new 1st column
+OTU_table_as.df <- cbind(rownames(OTU_table_as.df), data.frame(OTU_table_as.df, row.names=NULL))
+
+# rename this column
+colnames(OTU_table_as.df)[1] <- "OTU"
+
+head(OTU_table_as.df)
+```
+
+\
+
+Just to check the read depth per sample (in this case per database):
+
+- `sum(OTU_table_as.df$metaphlan4)` : `r sum(OTU_table_as.df$metaphlan4)`
+- `sum(OTU_table_as.df$'gottcha2-speDB-b')` : `r sum(OTU_table_as.df[,2])`
+- `sum(OTU_table_as.df$kraken2)` : `r sum(OTU_table_as.df$kraken2)`
+- `sum(OTU_table_as.df$pangia)` : `r sum(OTU_table_as.df$pangia)`
+
+Now you know your data has already been converted to relative abundance. *Note:* this will probably be fine, but it's generally NOT optimal for a number of reasons (can't rarefy or use analyses that require count-based data...). So be careful using any permANOVA, differential abundance testing, etc. For taxonomy plots, it will be fine.
+
+\
+### Getting taxonomy from BIOM file
+
+
+Wrangling taxa strings (note that these strings are stored in `observation_metadata`):
+```{r}
+observation_metadata(genus_biom)
+taxonomy_df<-observation_metadata(genus_biom)
+```
+
+If you look at the 7th column (species) you'll find all blanks ("s__") because this is a genus-level `biom` file. Just a sanity check. 
+
+
+Code to reformat taxonomy:
+```{r, message=FALSE, results='hide'}
+# use substrong to remove first 3 chararcters. lazy way to fix
+# check if substring works on 1st column
+head(substring(taxonomy_df[,1],4,nchar(taxonomy_df[,1])))
+
+# now do this for the whole df
+taxonomy_df[,1] <-substring(taxonomy_df[,1],4,nchar(taxonomy_df[,1]))
+taxonomy_df[,2] <-substring(taxonomy_df[,2],4,nchar(taxonomy_df[,2]))
+taxonomy_df[,3] <-substring(taxonomy_df[,3],4,nchar(taxonomy_df[,3]))
+taxonomy_df[,4] <-substring(taxonomy_df[,4],4,nchar(taxonomy_df[,4]))
+taxonomy_df[,5] <-substring(taxonomy_df[,5],4,nchar(taxonomy_df[,5]))
+taxonomy_df[,6] <-substring(taxonomy_df[,6],4,nchar(taxonomy_df[,6]))
+taxonomy_df[,7] <-substring(taxonomy_df[,7],4,nchar(taxonomy_df[,7]))
+
+# rename the columns
+colnames(taxonomy_df) <- c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+
+# now it's looking better. if you want to substitute the now blank fields for 'unidentified' do this
+
+taxonomy_df[taxonomy_df == ""] <- NA
+
+taxonomy_df[is.na(taxonomy_df)] <- "unidentified"
+
+# lastly add the row names (OTU IDs) as the new 1st column
+taxonomy_df <- cbind(rownames(taxonomy_df), data.frame(taxonomy_df, row.names=NULL))
+
+# ok 1 more step, rename this column
+colnames(taxonomy_df)[1] <- "OTU"
+```
+
+\
+
+### Exporting csv files
+
+Now your OTU table and taxonomy file are ready for export.
+```{r}
+write.csv(OTU_table_as.df, file = "../processed_data/Cally_OTUtable_genus.csv")
+write.csv(taxonomy_df, file = "../processed_data/Cally_taxatable_genus.csv")
+```
+
+To make your life easier, you can download them here:  
+<a href="../processed_data/Cally_OTUtable_genus.csv" download>Click to download OTU table</a>  
+<a href="../processed_data/Cally_taxatable_genus.csv" download>Click to download taxonomy table</a> \
+
+# Load into phyloseq
+```{r, message=FALSE, results='hide'}
+# OTU table
+OTU_table_as.df2<-OTU_table_as.df
+row.names(OTU_table_as.df2) <- OTU_table_as.df2[,1]
+OTU_table_as.df2[,1] <- NULL
+otu.samples <- otu_table(OTU_table_as.df2, taxa_are_rows = TRUE, errorIfNULL = TRUE)
+class(otu.samples)
+
+# taxonomy
+taxonomy_df2 <- taxonomy_df
+row.names(taxonomy_df2) <- taxonomy_df2[,1]
+taxonomy_df2[,1] <- NULL
+taxa <- tax_table(as(taxonomy_df2, "matrix"))
+
+# merge components
+genus_phylo_obj <- phyloseq(otu.samples,taxa)
+  
+  # if you have a metadata file, do this
+  # genus_phylo_obj <- phyloseq(otu.samples,taxa, metadata)
+```
+
+
+Check the data overview for you phyloseq object
+`genus_phylo_obj`
+```{r, echo=FALSE}
+genus_phylo_obj
+```
+
