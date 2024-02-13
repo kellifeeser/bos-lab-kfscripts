@@ -1,1 +1,1 @@
-# amplicon-r-template
+# Various scripts and tasks for bos-lab / Migun 
